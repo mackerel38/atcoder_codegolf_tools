@@ -132,6 +132,13 @@ def install(location: str, root: Path) -> None:
                 "tar -C google-or-tools -xf or-tools.tar.gz",
                 'echo "google/or-tools $AC_ORTOOLS_VERSION" '
                 '>> "$HOME/library_version"',
+                "test -f "
+                "/usr/local/include/absl/base/internal/"
+                "nullability_deprecated.h || {",
+                '  echo "Expected Abseil 20250512.x, but deprecated '
+                'nullability aliases are missing" >&2',
+                "  exit 1",
+                "}",
                 "pushd google-or-tools/*",
             )
         )
@@ -140,7 +147,29 @@ def install(location: str, root: Path) -> None:
             raise SystemExit("cLay OR-Tools patch target not found")
 
         script = script.replace(old_ortools, new_ortools)
+        old_ortools_cmake = (
+            "cmake -B build -G Ninja "
+            "-DBUILD_Protobuf:BOOL=ON "
+            "-DBUILD_re2:BOOL=ON "
+            "-DBUILD_CoinUtils:BOOL=ON "
+            "-DBUILD_Osi:BOOL=ON "
+            "-DBUILD_Clp:BOOL=ON "
+            "-DBUILD_Cgl:BOOL=ON "
+            "-DBUILD_Cbc:BOOL=ON "
+            "-DUSE_HIGHS:BOOL=ON "
+            "-DBUILD_SAMPLES:BOOL=OFF "
+            "-DBUILD_EXAMPLES:BOOL=OFF "
+            "-DBUILD_TESTING:BOOL=OFF "
+            "-DCMAKE_CXX_STANDARD=20"
+        )
 
+        if old_ortools_cmake not in script:
+            raise SystemExit("cLay OR-Tools CMake patch target not found")
+
+        script = script.replace(
+            old_ortools_cmake,
+            old_ortools_cmake + " -DBUILD_absl:BOOL=OFF",
+        )
         # Show the exact command when installation fails.
         script = (
             "set -Eex\n"
