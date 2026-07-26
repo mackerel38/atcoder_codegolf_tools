@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash ca-certificates curl wget sudo git gh \
     build-essential cmake ninja-build pkg-config ccache \
     unzip zip xz-utils bzip2 pigz pbzip2 tar \
-    software-properties-common ansifilter python3 \
+    software-properties-common ansifilter python3 locales \
     && rm -rf /var/lib/apt/lists/*
 
 COPY tools/spec.py /usr/local/bin/atcoder-spec
