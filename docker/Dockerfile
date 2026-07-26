@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM ubuntu:24.04
 
 ARG SPEC_URL
@@ -14,12 +16,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY tools/spec.py /usr/local/bin/atcoder-spec
 COPY tools/run_submission.py /usr/local/bin/run-submission
-RUN chmod +x /usr/local/bin/atcoder-spec /usr/local/bin/run-submission \
+
+RUN --mount=type=secret,id=github_token \
+    token="$(cat /run/secrets/github_token)" \
+    && printf 'machine api.github.com\nlogin x-access-token\npassword %s\n' \
+        "$token" > /tmp/github.netrc \
+    && chmod 600 /tmp/github.netrc \
+    && chmod +x /usr/local/bin/atcoder-spec /usr/local/bin/run-submission \
     && test -n "$SPEC_URL" \
     && apt-get update \
     && atcoder-spec install "$SPEC_URL" \
     && apt-get clean \
+    && rm -f /tmp/github.netrc \
     && rm -rf /var/lib/apt/lists/*
-    
+
 WORKDIR /opt/atcoder-toolchain
 ENTRYPOINT ["/usr/local/bin/run-submission"]
