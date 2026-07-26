@@ -54,11 +54,11 @@ def install(location: str, root: Path) -> None:
     script = script.replace("perl=5.38.2-3.2ubuntu0.2", "perl")
     
     if spec.get("language") == "APL":
-        # ftpmirror.gnu.org may redirect to a mirror with a broken TLS certificate.
-        # Download the identical GNU APL 1.9 release from the GNU origin server.
+        # ftpmirror.gnu.org may select a mirror with broken TLS.
+        # Use a fixed GNU mirror that still provides the 1.9 archive.
         script = script.replace(
             "https://ftpmirror.gnu.org/gnu/apl/apl-1.9.tar.gz",
-            "https://ftp.gnu.org/gnu/apl/apl-1.9.tar.gz",
+            "https://ftp.iij.ad.jp/pub/gnu/apl/apl-1.9.tar.gz",
         )
         script = (
             "set -Eex\n"
