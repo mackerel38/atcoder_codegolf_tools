@@ -16,7 +16,10 @@ COPY tools/spec.py /usr/local/bin/atcoder-spec
 COPY tools/run_submission.py /usr/local/bin/run-submission
 RUN chmod +x /usr/local/bin/atcoder-spec /usr/local/bin/run-submission \
     && test -n "$SPEC_URL" \
-    && atcoder-spec install "$SPEC_URL"
-
+    && apt-get update \
+    && atcoder-spec install "$SPEC_URL" \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+    
 WORKDIR /opt/atcoder-toolchain
 ENTRYPOINT ["/usr/local/bin/run-submission"]
