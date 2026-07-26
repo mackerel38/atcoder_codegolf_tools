@@ -42,9 +42,27 @@ ghcr.io/mackerel38/atcoder-codegolf-LANGUAGE:2025-10
 
 The build workflow is manual by design. Build and publish lightweight languages first; C++23, cLay, Octave, R, and Codon may approach GitHub-hosted runner time or disk limits.
 
+## ChatGPT remote runner
+
+When ChatGPT cannot access Docker directly, `.github/workflows/chatgpt-runner.yml` can execute Base64-preserved candidate sources and tests through the pinned GHCR images. Create one owner-controlled issue titled exactly:
+
+```text
+ChatGPT code-golf execution queue
+```
+
+Post `/run` JSON requests to that issue. The workflow accepts owner-created requests only, disables container networking, applies CPU, memory, process, capability, and timeout limits, and replies with source byte counts, SHA-256 values, per-test status, stdout, and stderr.
+
+See `docs/CHATGPT_RUNNER.md` for setup, request schema, limits, and result interpretation.
+
 ## Validation
 
 `validate.yml` checks the local tooling and fetches every configured TOML file to verify its required metadata. It does not install the toolchains.
+
+Run the remote-runner unit tests with:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
 
 ## Upstream fidelity and limitations
 

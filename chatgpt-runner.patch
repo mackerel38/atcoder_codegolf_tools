@@ -1,0 +1,840 @@
+diff --git a/.github/workflows/chatgpt-runner.yml b/.github/workflows/chatgpt-runner.yml
+new file mode 100644
+index 0000000..6a13c6f
+--- /dev/null
++++ b/.github/workflows/chatgpt-runner.yml
+@@ -0,0 +1,64 @@
++name: ChatGPT code-golf runner
++
++on:
++  issue_comment:
++    types: [created]
++
++permissions:
++  contents: read
++  packages: read
++  issues: write
++
++concurrency:
++  group: chatgpt-codegolf-runner
++  cancel-in-progress: false
++
++jobs:
++  run:
++    if: >-
++      github.event.issue.pull_request == null &&
++      github.event.issue.title == 'ChatGPT code-golf execution queue' &&
++      github.event.issue.user.login == github.repository_owner &&
++      github.event.comment.user.login == github.repository_owner &&
++      startsWith(github.event.comment.body, '/run')
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
++
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Log in to GHCR
++        uses: docker/login-action@v3
++        with:
++          registry: ghcr.io
++          username: ${{ github.repository_owner }}
++          password: ${{ secrets.GITHUB_TOKEN }}
++
++      - name: Execute request
++        id: execute
++        env:
++          RESULT_FILE: ${{ runner.temp }}/chatgpt-result.md
++          REPORT_FILE: ${{ runner.temp }}/chatgpt-report.json
++        run: |
++          python3 tools/chatgpt_runner.py \
++            --event "$GITHUB_EVENT_PATH" \
++            --output "$RESULT_FILE" \
++            --report-json "$REPORT_FILE"
++
++      - name: Reply with result
++        if: always()
++        env:
++          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++          ISSUE_NUMBER: ${{ github.event.issue.number }}
++          RESULT_FILE: ${{ runner.temp }}/chatgpt-result.md
++        run: |
++          if [[ ! -s "$RESULT_FILE" ]]; then
++            printf '%s\n' \
++              '## Code-golf runner error' \
++              '' \
++              'The runner stopped before producing a report. Inspect the workflow log.' \
++              > "$RESULT_FILE"
++          fi
++          gh issue comment "$ISSUE_NUMBER" \
++            --repo "$GITHUB_REPOSITORY" \
++            --body-file "$RESULT_FILE"
+diff --git a/README.md b/README.md
+index ba70424..82a50c2 100644
+--- a/README.md
++++ b/README.md
+@@ -42,10 +42,28 @@ ghcr.io/mackerel38/atcoder-codegolf-LANGUAGE:2025-10
+ 
+ The build workflow is manual by design. Build and publish lightweight languages first; C++23, cLay, Octave, R, and Codon may approach GitHub-hosted runner time or disk limits.
+ 
++## ChatGPT remote runner
++
++When ChatGPT cannot access Docker directly, `.github/workflows/chatgpt-runner.yml` can execute Base64-preserved candidate sources and tests through the pinned GHCR images. Create one owner-controlled issue titled exactly:
++
++```text
++ChatGPT code-golf execution queue
++```
++
++Post `/run` JSON requests to that issue. The workflow accepts owner-created requests only, disables container networking, applies CPU, memory, process, capability, and timeout limits, and replies with source byte counts, SHA-256 values, per-test status, stdout, and stderr.
++
++See `docs/CHATGPT_RUNNER.md` for setup, request schema, limits, and result interpretation.
++
+ ## Validation
+ 
+ `validate.yml` checks the local tooling and fetches every configured TOML file to verify its required metadata. It does not install the toolchains.
+ 
++Run the remote-runner unit tests with:
++
++```sh
++python3 -m unittest discover -s tests -v
++```
++
+ ## Upstream fidelity and limitations
+ 
+ - Installation and execution metadata come from AtCoder's published 2025-10 TOML files.
+diff --git a/docs/CHATGPT_RUNNER.md b/docs/CHATGPT_RUNNER.md
+new file mode 100644
+index 0000000..4adfebd
+--- /dev/null
++++ b/docs/CHATGPT_RUNNER.md
+@@ -0,0 +1,119 @@
++# ChatGPT code-golf execution runner
++
++This repository can use one owner-controlled GitHub issue as a remote execution queue for ChatGPT-assisted code-golf verification. GitHub Actions pulls the pinned GHCR toolchain image, restores candidate source bytes from Base64, compiles or checks the source through the image entrypoint, executes tests without network access, and posts the result back to the issue.
++
++## One-time setup
++
++1. Ensure the required language image already exists in GHCR.
++2. Create one open issue in this repository with the exact title:
++
++   ```text
++   ChatGPT code-golf execution queue
++   ```
++
++   The issue must be created by the repository owner. Keep it open and use it only for runner requests and results.
++3. In the repository settings, leave **Actions → General → Workflow permissions** able to write issues. The workflow declares `issues: write`, `packages: read`, and `contents: read`.
++4. If GHCR returns `403` or `pull access denied`, open the package settings and grant this repository Actions access to that package.
++
++The workflow accepts only newly created comments satisfying all of these conditions:
++
++- the target is an issue, not a pull request;
++- the issue title exactly matches the queue title;
++- the issue was created by the repository owner;
++- the comment was created by the repository owner;
++- the comment begins with `/run`.
++
++## Request format
++
++Post `/run` followed by a JSON object. An optional Markdown code fence around the JSON is accepted.
++
++```text
++/run
++{
++  "request_id": "awk-smoke-1",
++  "language": "awk",
++  "candidates": [
++    {
++      "id": "a",
++      "source_base64": "e3ByaW50ICQxfQ=="
++    }
++  ],
++  "tests": [
++    {
++      "name": "basic",
++      "stdin_base64": "MTIzCg==",
++      "expected_base64": "MTIzCg=="
++    }
++  ],
++  "judge_mode": "tokens"
++}
++```
++
++The example source is `{print $1}` and the test input and expected output are both `123` followed by a newline.
++
++### Required fields
++
++- `language`: a slug from `manifest.json`.
++- `candidates`: one or more candidate objects.
++  - `id`: a unique identifier containing only ASCII letters, digits, `.`, `_`, or `-`.
++  - `source_base64`: Base64-encoded UTF-8 source bytes.
++- `tests`: one or more test objects.
++  - `name`: a unique identifier with the same restrictions as candidate IDs.
++  - `stdin_base64`: Base64-encoded standard input. It may be an empty string.
++  - `expected_base64`: optional Base64-encoded expected output.
++
++For a single candidate, `source_base64` may be supplied at the top level instead of `candidates`.
++
++### Optional fields
++
++- `request_id`: shown in the result comment.
++- `judge_mode`: `tokens` (default), `exact`, or `float`.
++- `abs_error`: non-negative absolute tolerance for `float`; default `1e-9`.
++- `rel_error`: non-negative relative tolerance for `float`; default `1e-9`.
++- `timeout_seconds`: per-test limit from 1 to 60; default 10.
++- `memory_mb`: container memory limit from 64 to 4096; default 2048.
++
++`tokens` compares byte tokens separated by ASCII/Unicode whitespace as interpreted by Python byte splitting. `exact` compares the full output byte sequence. `float` compares numeric tokens with the requested tolerances and requires non-numeric tokens to match exactly.
++
++## Limits and isolation
++
++Each request is limited to:
++
++- 20 candidates;
++- 100 tests;
++- 1 MiB decoded source per candidate;
++- 4 MiB decoded input or expected output per test;
++- 256 KiB captured stdout and stderr per run;
++- 2 CPUs and 512 processes per container;
++- no container network;
++- no Linux capabilities;
++- `no-new-privileges` enabled;
++- one workflow request at a time through a repository-wide concurrency group.
++
++Candidate output is treated as untrusted data and is placed in Markdown code fences. Containers are removed after every test, including timeout cleanup.
++
++## Result interpretation
++
++The issue reply reports:
++
++- language display and slug;
++- GHCR image and digest;
++- decoded UTF-8 source byte count and SHA-256;
++- PASS, FAIL, RE, TIMEOUT, or RUN for each test;
++- process exit code and elapsed time;
++- captured stdout and stderr for failures, or for a single successful test.
++
++A successful GHCR run is a compatibility test against the stored AtCoder TOML environment. It is not proof that the production AtCoder judge used an identical kernel, CPU, filesystem, or resource configuration.
++
++## ChatGPT connector workflow
++
++A ChatGPT session with access to the repository can:
++
++1. read `manifest.json` and select available language slugs;
++2. generate candidate and test byte strings locally;
++3. Base64-encode those bytes;
++4. add a `/run` comment to the queue issue;
++5. read the workflow result comment;
++6. revise and submit another batch when necessary.
++
++If the GitHub connector cannot create issue comments, the repository owner must paste the generated `/run` payload into the queue issue manually.
+diff --git a/docs/PROJECT_INSTRUCTIONS.md b/docs/PROJECT_INSTRUCTIONS.md
+index b2685db..c05de57 100644
+--- a/docs/PROJECT_INSTRUCTIONS.md
++++ b/docs/PROJECT_INSTRUCTIONS.md
+@@ -6,7 +6,13 @@ Use `mackerel38/atcoder_codegolf_tools` as the canonical toolchain registry.
+ 2. Use only the language slugs listed there.
+ 3. Check whether Docker is already available. Never install Docker, compilers, packages, or alternate runtimes merely to use this repository.
+ 4. When Docker is available, prefer the pinned GHCR image and run it through `bootstrap.sh`.
+-5. If an image is unavailable or Docker is absent, stop after one failed availability check and treat that language as unavailable for execution.
+-6. Do not substitute a different language version without explicitly classifying the candidate as compatibility-tested or untested.
+-7. The AtCoder TOML URL is the source of truth for filename, installation, compile/check command, runtime environment, and execution command.
+-8. A successful container run is still a compatibility test, not proof that AtCoder itself used the identical host kernel, CPU, or resource limits.
++5. When Docker is unavailable, use the owner-controlled GitHub Actions execution queue documented in `docs/CHATGPT_RUNNER.md`.
++6. Post runner requests only to the issue titled exactly `ChatGPT code-golf execution queue`, created by the repository owner.
++7. Preserve candidate source, test input, and expected output as Base64. Measure the decoded source with UTF-8 byte length, not character count.
++8. Batch multiple candidates and tests into one request when practical.
++9. Use `tokens` for ordinary whitespace-token comparison, `exact` for strict output, and `float` only with explicit tolerances appropriate to the problem.
++10. Treat PASS as compatibility-tested in the pinned GHCR image, not as proof of execution on the production AtCoder judge.
++11. If an image is unavailable, Docker is absent, or the remote runner cannot be triggered, stop after one failed availability check and classify that language as unavailable for execution.
++12. Do not substitute another language version without explicitly classifying the candidate as compatibility-tested or untested.
++13. The AtCoder TOML URL is the source of truth for filename, installation, compile/check command, runtime environment, and execution command.
++14. Preserve raw stdout and stderr when checking scientific notation, decorations, whitespace behavior, and negative-number formatting.
+diff --git a/tests/test_chatgpt_runner.py b/tests/test_chatgpt_runner.py
+new file mode 100644
+index 0000000..e9d3a4d
+--- /dev/null
++++ b/tests/test_chatgpt_runner.py
+@@ -0,0 +1,79 @@
++#!/usr/bin/env python3
++from __future__ import annotations
++
++import base64
++import importlib.util
++import json
++from pathlib import Path
++import tempfile
++import unittest
++
++MODULE_PATH = Path(__file__).parents[1] / "tools" / "chatgpt_runner.py"
++SPEC = importlib.util.spec_from_file_location("chatgpt_runner", MODULE_PATH)
++assert SPEC and SPEC.loader
++runner = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(runner)
++
++
++def b64(data: bytes) -> str:
++    return base64.b64encode(data).decode()
++
++
++class RunnerTests(unittest.TestCase):
++    def setUp(self) -> None:
++        self.manifest = {"languages": {"awk": {"display": "AWK"}}}
++        self.event = {
++            "repository": {
++                "full_name": "mackerel38/atcoder_codegolf_tools",
++                "owner": {"login": "mackerel38"},
++            },
++            "issue": {
++                "number": 1,
++                "title": runner.QUEUE_TITLE,
++                "user": {"login": "mackerel38"},
++            },
++            "comment": {
++                "id": 123,
++                "user": {"login": "mackerel38"},
++                "body": "/run\n" + json.dumps(
++                    {
++                        "language": "awk",
++                        "candidates": [{"id": "a", "source_base64": b64(b"{print $1}")}],
++                        "tests": [
++                            {
++                                "name": "sample",
++                                "stdin_base64": b64(b"123\n"),
++                                "expected_base64": b64(b"123\n"),
++                            }
++                        ],
++                    }
++                ),
++            },
++        }
++
++    def test_request_parsing(self) -> None:
++        request = runner.request_from_event(self.event, self.manifest)
++        self.assertEqual(request["language"], "awk")
++        self.assertEqual(request["candidates"][0]["source"], b"{print $1}")
++        self.assertEqual(request["tests"][0]["stdin"], b"123\n")
++
++    def test_owner_only(self) -> None:
++        self.event["comment"]["user"]["login"] = "someone-else"
++        with self.assertRaises(runner.RequestError):
++            runner.request_from_event(self.event, self.manifest)
++
++    def test_tokens_judge(self) -> None:
++        request = {"judge_mode": "tokens", "abs_error": 0.0, "rel_error": 0.0}
++        self.assertEqual(runner.judge(b"1  2\n", b"1\n2", request), "PASS")
++
++    def test_exact_judge(self) -> None:
++        request = {"judge_mode": "exact", "abs_error": 0.0, "rel_error": 0.0}
++        self.assertEqual(runner.judge(b"1\n", b"1", request), "FAIL")
++
++    def test_float_judge(self) -> None:
++        request = {"judge_mode": "float", "abs_error": 1e-6, "rel_error": 1e-6}
++        self.assertEqual(runner.judge(b"1.0000001", b"1", request), "PASS")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tools/chatgpt_runner.py b/tools/chatgpt_runner.py
+new file mode 100755
+index 0000000..55cd74c
+--- /dev/null
++++ b/tools/chatgpt_runner.py
+@@ -0,0 +1,499 @@
++#!/usr/bin/env python3
++"""Run trusted code-golf requests from a GitHub issue comment."""
++from __future__ import annotations
++
++import argparse
++import base64
++import binascii
++import hashlib
++import json
++import math
++import os
++from pathlib import Path
++import re
++import resource
++import signal
++import subprocess
++import tempfile
++import time
++import uuid
++from typing import Any
++
++MAX_CANDIDATES = 20
++MAX_TESTS = 100
++MAX_SOURCE_BYTES = 1 * 1024 * 1024
++MAX_INPUT_BYTES = 4 * 1024 * 1024
++MAX_EXPECTED_BYTES = 4 * 1024 * 1024
++MAX_CAPTURE_BYTES = 256 * 1024
++MAX_COMMENT_CHARS = 60_000
++DEFAULT_TIMEOUT_SECONDS = 10
++MAX_TIMEOUT_SECONDS = 60
++DEFAULT_MEMORY_MB = 2048
++MAX_MEMORY_MB = 4096
++CPU_LIMIT = "2"
++PIDS_LIMIT = "512"
++QUEUE_TITLE = "ChatGPT code-golf execution queue"
++ID_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}\Z")
++
++
++class RequestError(ValueError):
++    """The issue comment does not contain a valid runner request."""
++
++
++def sha256(data: bytes) -> str:
++    return hashlib.sha256(data).hexdigest()
++
++
++def decode_b64(value: Any, field: str, limit: int) -> bytes:
++    if not isinstance(value, str):
++        raise RequestError(f"{field} must be a Base64 string")
++    try:
++        decoded = base64.b64decode(value, validate=True)
++    except (binascii.Error, ValueError) as exc:
++        raise RequestError(f"{field} is not valid Base64") from exc
++    if len(decoded) > limit:
++        raise RequestError(f"{field} exceeds {limit} decoded bytes")
++    return decoded
++
++
++def bounded_int(value: Any, field: str, default: int, minimum: int, maximum: int) -> int:
++    if value is None:
++        return default
++    if isinstance(value, bool) or not isinstance(value, int):
++        raise RequestError(f"{field} must be an integer")
++    if not minimum <= value <= maximum:
++        raise RequestError(f"{field} must be between {minimum} and {maximum}")
++    return value
++
++
++def bounded_float(value: Any, field: str, default: float) -> float:
++    if value is None:
++        return default
++    if isinstance(value, bool) or not isinstance(value, (int, float)):
++        raise RequestError(f"{field} must be numeric")
++    result = float(value)
++    if not math.isfinite(result) or result < 0:
++        raise RequestError(f"{field} must be a finite non-negative number")
++    return result
++
++
++def clean_id(value: Any, field: str) -> str:
++    if not isinstance(value, str) or not ID_RE.fullmatch(value):
++        raise RequestError(f"{field} must match {ID_RE.pattern}")
++    return value
++
++
++def strip_optional_fence(text: str) -> str:
++    text = text.strip()
++    if not text.startswith("```"):
++        return text
++    lines = text.splitlines()
++    if len(lines) < 3 or not lines[-1].strip().startswith("```"):
++        raise RequestError("unterminated Markdown code fence")
++    return "\n".join(lines[1:-1]).strip()
++
++
++def request_from_event(event: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
++    issue = event.get("issue")
++    comment = event.get("comment")
++    repository = event.get("repository")
++    if not isinstance(issue, dict) or not isinstance(comment, dict) or not isinstance(repository, dict):
++        raise RequestError("unsupported GitHub event")
++
++    owner = repository.get("owner", {}).get("login")
++    if not isinstance(owner, str) or not owner:
++        raise RequestError("repository owner is missing")
++    if issue.get("title") != QUEUE_TITLE:
++        raise RequestError("comment is not on the execution queue issue")
++    if issue.get("user", {}).get("login") != owner:
++        raise RequestError("execution queue issue was not created by the repository owner")
++    if comment.get("user", {}).get("login") != owner:
++        raise RequestError("request author is not the repository owner")
++
++    body = comment.get("body")
++    if not isinstance(body, str) or not body.startswith("/run"):
++        raise RequestError("comment must start with /run")
++    payload_text = strip_optional_fence(body[4:])
++    if not payload_text:
++        raise RequestError("/run must be followed by a JSON object")
++    try:
++        payload = json.loads(payload_text)
++    except json.JSONDecodeError as exc:
++        raise RequestError(f"invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}") from exc
++    if not isinstance(payload, dict):
++        raise RequestError("request payload must be a JSON object")
++
++    languages = manifest.get("languages")
++    if not isinstance(languages, dict):
++        raise RequestError("manifest.json does not contain languages")
++    language = payload.get("language")
++    if not isinstance(language, str) or language not in languages:
++        raise RequestError("language must be one of the slugs in manifest.json")
++
++    candidates_raw = payload.get("candidates")
++    if candidates_raw is None and "source_base64" in payload:
++        candidates_raw = [{"id": "candidate", "source_base64": payload["source_base64"]}]
++    if not isinstance(candidates_raw, list) or not candidates_raw:
++        raise RequestError("candidates must be a non-empty array")
++    if len(candidates_raw) > MAX_CANDIDATES:
++        raise RequestError(f"at most {MAX_CANDIDATES} candidates are allowed")
++
++    candidates: list[dict[str, Any]] = []
++    seen_candidate_ids: set[str] = set()
++    for index, item in enumerate(candidates_raw):
++        if not isinstance(item, dict):
++            raise RequestError(f"candidates[{index}] must be an object")
++        candidate_id = clean_id(item.get("id", f"candidate-{index + 1}"), f"candidates[{index}].id")
++        if candidate_id in seen_candidate_ids:
++            raise RequestError(f"duplicate candidate id: {candidate_id}")
++        seen_candidate_ids.add(candidate_id)
++        source = decode_b64(item.get("source_base64"), f"candidates[{index}].source_base64", MAX_SOURCE_BYTES)
++        try:
++            source.decode("utf-8")
++        except UnicodeDecodeError as exc:
++            raise RequestError(f"candidates[{index}].source_base64 must decode to UTF-8") from exc
++        candidates.append({"id": candidate_id, "source": source})
++
++    tests_raw = payload.get("tests")
++    if not isinstance(tests_raw, list) or not tests_raw:
++        raise RequestError("tests must be a non-empty array")
++    if len(tests_raw) > MAX_TESTS:
++        raise RequestError(f"at most {MAX_TESTS} tests are allowed")
++
++    tests: list[dict[str, Any]] = []
++    seen_test_names: set[str] = set()
++    for index, item in enumerate(tests_raw):
++        if not isinstance(item, dict):
++            raise RequestError(f"tests[{index}] must be an object")
++        name = clean_id(item.get("name", f"test-{index + 1}"), f"tests[{index}].name")
++        if name in seen_test_names:
++            raise RequestError(f"duplicate test name: {name}")
++        seen_test_names.add(name)
++        stdin = decode_b64(item.get("stdin_base64", ""), f"tests[{index}].stdin_base64", MAX_INPUT_BYTES)
++        expected = None
++        if "expected_base64" in item:
++            expected = decode_b64(item["expected_base64"], f"tests[{index}].expected_base64", MAX_EXPECTED_BYTES)
++        tests.append({"name": name, "stdin": stdin, "expected": expected})
++
++    judge_mode = payload.get("judge_mode", "tokens")
++    if judge_mode not in {"exact", "tokens", "float"}:
++        raise RequestError("judge_mode must be exact, tokens, or float")
++
++    return {
++        "request_id": str(payload.get("request_id", comment.get("id", "unknown")))[:128],
++        "language": language,
++        "display": str(languages[language].get("display", language)),
++        "candidates": candidates,
++        "tests": tests,
++        "judge_mode": judge_mode,
++        "abs_error": bounded_float(payload.get("abs_error"), "abs_error", 1e-9),
++        "rel_error": bounded_float(payload.get("rel_error"), "rel_error", 1e-9),
++        "timeout_seconds": bounded_int(
++            payload.get("timeout_seconds"),
++            "timeout_seconds",
++            DEFAULT_TIMEOUT_SECONDS,
++            1,
++            MAX_TIMEOUT_SECONDS,
++        ),
++        "memory_mb": bounded_int(
++            payload.get("memory_mb"),
++            "memory_mb",
++            DEFAULT_MEMORY_MB,
++            64,
++            MAX_MEMORY_MB,
++        ),
++        "issue_number": int(issue["number"]),
++        "repository": str(repository.get("full_name", "")),
++        "owner": owner,
++    }
++
++
++def set_capture_limit() -> None:
++    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_CAPTURE_BYTES, MAX_CAPTURE_BYTES))
++
++
++def read_capture(path: Path) -> tuple[bytes, bool]:
++    data = path.read_bytes() if path.exists() else b""
++    truncated = len(data) >= MAX_CAPTURE_BYTES
++    return data[:MAX_CAPTURE_BYTES], truncated
++
++
++def run_command(command: list[str], *, stdin: bytes, timeout: int, cleanup_name: str | None = None) -> dict[str, Any]:
++    with tempfile.TemporaryDirectory(prefix="codegolf-capture-") as capture_dir:
++        stdout_path = Path(capture_dir) / "stdout"
++        stderr_path = Path(capture_dir) / "stderr"
++        started = time.monotonic()
++        timed_out = False
++        with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
++            process = subprocess.Popen(
++                command,
++                stdin=subprocess.PIPE,
++                stdout=stdout_file,
++                stderr=stderr_file,
++                preexec_fn=set_capture_limit,
++            )
++            try:
++                process.communicate(stdin, timeout=timeout)
++            except subprocess.TimeoutExpired:
++                timed_out = True
++                process.kill()
++                process.wait()
++            finally:
++                if cleanup_name:
++                    subprocess.run(
++                        ["docker", "rm", "-f", cleanup_name],
++                        stdout=subprocess.DEVNULL,
++                        stderr=subprocess.DEVNULL,
++                        check=False,
++                        timeout=15,
++                    )
++        elapsed = time.monotonic() - started
++        stdout, stdout_truncated = read_capture(stdout_path)
++        stderr, stderr_truncated = read_capture(stderr_path)
++        return {
++            "exit_code": 124 if timed_out else process.returncode,
++            "timed_out": timed_out,
++            "elapsed": elapsed,
++            "stdout": stdout,
++            "stderr": stderr,
++            "stdout_truncated": stdout_truncated,
++            "stderr_truncated": stderr_truncated,
++        }
++
++
++def compare_float_tokens(actual: bytes, expected: bytes, abs_error: float, rel_error: float) -> bool:
++    actual_tokens = actual.split()
++    expected_tokens = expected.split()
++    if len(actual_tokens) != len(expected_tokens):
++        return False
++    for actual_token, expected_token in zip(actual_tokens, expected_tokens):
++        try:
++            actual_value = float(actual_token)
++            expected_value = float(expected_token)
++        except ValueError:
++            if actual_token != expected_token:
++                return False
++            continue
++        if not math.isfinite(actual_value) or not math.isfinite(expected_value):
++            if actual_token != expected_token:
++                return False
++            continue
++        if abs(actual_value - expected_value) > max(abs_error, rel_error * abs(expected_value)):
++            return False
++    return True
++
++
++def judge(actual: bytes, expected: bytes | None, request: dict[str, Any]) -> str:
++    if expected is None:
++        return "RUN"
++    mode = request["judge_mode"]
++    if mode == "exact":
++        passed = actual == expected
++    elif mode == "tokens":
++        passed = actual.split() == expected.split()
++    else:
++        passed = compare_float_tokens(actual, expected, request["abs_error"], request["rel_error"])
++    return "PASS" if passed else "FAIL"
++
++
++def pull_image(image: str) -> tuple[str, str]:
++    completed = subprocess.run(
++        ["docker", "pull", image],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.STDOUT,
++        text=True,
++        timeout=600,
++        check=False,
++    )
++    if completed.returncode != 0:
++        raise RuntimeError(f"docker pull failed ({completed.returncode}):\n{completed.stdout[-8000:]}")
++    inspected = subprocess.run(
++        ["docker", "image", "inspect", "--format", "{{join .RepoDigests \",\"}}", image],
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++        text=True,
++        timeout=30,
++        check=False,
++    )
++    digest = inspected.stdout.strip() if inspected.returncode == 0 else "unavailable"
++    return completed.stdout[-4000:], digest or "unavailable"
++
++
++def execute_request(request: dict[str, Any]) -> dict[str, Any]:
++    image = f"ghcr.io/{request['owner']}/atcoder-codegolf-{request['language']}:2025-10"
++    pull_log, image_digest = pull_image(image)
++    candidate_reports: list[dict[str, Any]] = []
++
++    with tempfile.TemporaryDirectory(prefix="codegolf-request-") as workspace:
++        workspace_path = Path(workspace)
++        for candidate_index, candidate in enumerate(request["candidates"]):
++            source_path = workspace_path / f"candidate-{candidate_index}"
++            source_path.write_bytes(candidate["source"])
++            test_reports: list[dict[str, Any]] = []
++            for test_index, test in enumerate(request["tests"]):
++                container_name = f"codegolf-{uuid.uuid4().hex[:20]}"
++                command = [
++                    "docker",
++                    "run",
++                    "--name",
++                    container_name,
++                    "--rm",
++                    "--network",
++                    "none",
++                    "--memory",
++                    f"{request['memory_mb']}m",
++                    "--memory-swap",
++                    f"{request['memory_mb']}m",
++                    "--cpus",
++                    CPU_LIMIT,
++                    "--pids-limit",
++                    PIDS_LIMIT,
++                    "--cap-drop",
++                    "ALL",
++                    "--security-opt",
++                    "no-new-privileges",
++                    "-i",
++                    "-v",
++                    f"{source_path.resolve()}:/submission:ro",
++                    image,
++                ]
++                result = run_command(
++                    command,
++                    stdin=test["stdin"],
++                    timeout=request["timeout_seconds"],
++                    cleanup_name=container_name,
++                )
++                status = "TIMEOUT" if result["timed_out"] else "RE" if result["exit_code"] != 0 else judge(result["stdout"], test["expected"], request)
++                result.update(
++                    {
++                        "name": test["name"],
++                        "status": status,
++                        "stdout_sha256": sha256(result["stdout"]),
++                        "stderr_sha256": sha256(result["stderr"]),
++                    }
++                )
++                test_reports.append(result)
++            candidate_reports.append(
++                {
++                    "id": candidate["id"],
++                    "source_bytes": len(candidate["source"]),
++                    "source_sha256": sha256(candidate["source"]),
++                    "tests": test_reports,
++                }
++            )
++
++    return {
++        "request": request,
++        "image": image,
++        "image_digest": image_digest,
++        "pull_log": pull_log,
++        "candidates": candidate_reports,
++    }
++
++
++def markdown_code(data: bytes, truncated: bool) -> str:
++    text = data.decode("utf-8", "backslashreplace").replace("\x00", "\\x00")
++    if not text:
++        text = "(empty)"
++    if truncated:
++        text += f"\n[truncated at {MAX_CAPTURE_BYTES} bytes]"
++    longest = max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
++    fence = "`" * max(3, longest + 1)
++    return f"{fence}text\n{text}\n{fence}"
++
++
++def make_markdown(report: dict[str, Any]) -> str:
++    request = report["request"]
++    lines = [
++        "## Code-golf execution result",
++        "",
++        f"- Request: `{request['request_id']}`",
++        f"- Language: **{request['display']}** (`{request['language']}`)",
++        f"- Image: `{report['image']}`",
++        f"- Digest: `{report['image_digest']}`",
++        f"- Judge mode: `{request['judge_mode']}`",
++        f"- Limits: {request['timeout_seconds']} s/test, {request['memory_mb']} MiB, {CPU_LIMIT} CPUs, {PIDS_LIMIT} processes, network disabled",
++        "",
++        "| Candidate | UTF-8 bytes | Passed | Failed | Source SHA-256 |",
++        "|---|---:|---:|---:|---|",
++    ]
++    for candidate in report["candidates"]:
++        passed = sum(test["status"] in {"PASS", "RUN"} for test in candidate["tests"])
++        failed = len(candidate["tests"]) - passed
++        lines.append(
++            f"| `{candidate['id']}` | {candidate['source_bytes']} | {passed} | {failed} | `{candidate['source_sha256']}` |"
++        )
++
++    for candidate in report["candidates"]:
++        lines.extend(
++            [
++                "",
++                f"### Candidate `{candidate['id']}`",
++                "",
++                "| Test | Status | Exit | Time | stdout bytes | stderr bytes |",
++                "|---|---|---:|---:|---:|---:|",
++            ]
++        )
++        for test in candidate["tests"]:
++            lines.append(
++                f"| `{test['name']}` | **{test['status']}** | {test['exit_code']} | {test['elapsed']:.3f}s | {len(test['stdout'])} | {len(test['stderr'])} |"
++            )
++
++        details = [test for test in candidate["tests"] if test["status"] not in {"PASS", "RUN"}]
++        if not details and len(candidate["tests"]) == 1:
++            details = candidate["tests"]
++        for test in details[:5]:
++            lines.extend(
++                [
++                    "",
++                    f"<details><summary>{test['name']}: {test['status']}</summary>",
++                    "",
++                    f"stdout SHA-256: `{test['stdout_sha256']}`",
++                    "",
++                    markdown_code(test["stdout"], test["stdout_truncated"]),
++                    "",
++                    f"stderr SHA-256: `{test['stderr_sha256']}`",
++                    "",
++                    markdown_code(test["stderr"], test["stderr_truncated"]),
++                    "",
++                    "</details>",
++                ]
++            )
++
++    text = "\n".join(lines) + "\n"
++    if len(text) > MAX_COMMENT_CHARS:
++        text = text[: MAX_COMMENT_CHARS - 100] + "\n\n[report truncated to fit a GitHub comment]\n"
++    return text
++
++
++def error_markdown(message: str) -> str:
++    safe = message.replace("`", "'")
++    return f"## Code-golf runner error\n\n```text\n{safe[:20_000]}\n```\n"
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--event", type=Path, required=True)
++    parser.add_argument("--manifest", type=Path, default=Path("manifest.json"))
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--report-json", type=Path)
++    args = parser.parse_args()
++
++    try:
++        event = json.loads(args.event.read_text(encoding="utf-8"))
++        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
++        request = request_from_event(event, manifest)
++        report = execute_request(request)
++        args.output.write_text(make_markdown(report), encoding="utf-8")
++        if args.report_json:
++            serializable = json.loads(json.dumps(report, default=lambda value: base64.b64encode(value).decode() if isinstance(value, bytes) else str(value)))
++            args.report_json.write_text(json.dumps(serializable, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
++        return 0
++    except Exception as exc:  # Always leave a useful issue comment.
++        args.output.parent.mkdir(parents=True, exist_ok=True)
++        args.output.write_text(error_markdown(f"{type(exc).__name__}: {exc}"), encoding="utf-8")
++        return 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
