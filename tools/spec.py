@@ -60,6 +60,14 @@ def install(location: str, root: Path) -> None:
             "https://ftpmirror.gnu.org/gnu/apl/apl-1.9.tar.gz",
             "https://ftp.gnu.org/gnu/apl/apl-1.9.tar.gz",
         )
+        script = (
+            "set -Eex -o pipefail\n"
+            "trap 's=$?; "
+            'echo "::error::APL install failed at line '
+            "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
+            "exit $s' ERR\n"
+            + script
+        )
     
     if spec.get("language") == "Ruby":
         # numo-openblas requires a Fortran compiler to build LAPACK.
