@@ -50,7 +50,21 @@ def install(location: str, root: Path) -> None:
     script = spec.get("install", "")
     if not isinstance(script, str):
         raise SystemExit("install must be a string")
+    
     script = script.replace("perl=5.38.2-3.2ubuntu0.2", "perl")
+    
+    if spec.get("language") == "Ruby":
+        # numo-openblas requires a Fortran compiler to build LAPACK.
+        script = "sudo apt-get install -y gfortran\n" + script
+    
+        # Reproduce the Rice version available when the 2025-10
+        # AtCoder Ruby environment was prepared.
+        marker = 'export MAKEFLAGS="-j$(nproc)"'
+        script = script.replace(
+            marker,
+            marker + "\ngem install -N rice:4.6.1",
+        )
+    
     if script:
         install_script = root / "install.sh"
         install_script.write_text(
