@@ -54,11 +54,13 @@ def install(location: str, root: Path) -> None:
     script = script.replace("perl=5.38.2-3.2ubuntu0.2", "perl")
     
     if spec.get("language") == "APL":
-        # ftpmirror.gnu.org may select a mirror with broken TLS.
-        # Use a fixed GNU mirror that still provides the 1.9 archive.
+        # Some GNU mirrors currently fail TLS or no longer expose the old flat URL.
+        # Try current GNU mirrors and verify the GNU APL 1.9 release archive.
         script = script.replace(
-            "https://ftpmirror.gnu.org/gnu/apl/apl-1.9.tar.gz",
-            "https://ftp.iij.ad.jp/pub/gnu/apl/apl-1.9.tar.gz",
+            "wget https://ftpmirror.gnu.org/gnu/apl/apl-1.9.tar.gz",
+            """wget -O apl-1.9.tar.gz https://rsync.nic.funet.fi/pub/gnu/RELEASE/apl/apl-1.9/apl-1.9.tar.gz ||
+    wget -O apl-1.9.tar.gz https://gnu.cs.utah.edu/apl/apl-1.9.tar.gz
+    echo '291867f1b1937693abb57be7d9a37618b0376e3e2709574854a7bbe52bb28eb8  apl-1.9.tar.gz' | sha256sum -c -""",
         )
         script = (
             "set -Eex\n"
