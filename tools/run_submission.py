@@ -93,6 +93,7 @@ def main() -> None:
             ["bash", "-c", compile_script],
             cwd=ROOT,
             env=env,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
