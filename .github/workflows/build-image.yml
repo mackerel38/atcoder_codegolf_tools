@@ -59,15 +59,12 @@ jobs:
           context: .
           file: docker/Dockerfile
           push: ${{ inputs.push_image }}
-          tags: >-
-            ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{
-            inputs.language }}:2025-10
+          tags: ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{ inputs.language }}:2025-10
           build-args: |
             SPEC_URL=${{ steps.spec.outputs.spec_url }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
           cache-from: |
             type=gha,scope=${{ inputs.language }}
             type=registry,ref=ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{ inputs.language }}:buildcache
-          cache-to: >-
-            type=registry,
-            ref=ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{ inputs.language }}:buildcache,
-            mode=max
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{ inputs.language }}:buildcache,mode=max
