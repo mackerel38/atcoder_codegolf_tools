@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "source": {
+    "language_list": "https://img.atcoder.jp/file/language-update/2025-10/language-list.html",
+    "revision": "2025-10",
+    "checked_at": "2026-07-26"
+  },
+  "languages": {
+    "apl": {
+      "display": "APL (GNU APL 1.9)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/003-1-9_apl.toml"
+    },
+    "awk": {
+      "display": "AWK (GNU awk 5.2.1)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/006-5-2-1_gnu-awk.toml"
+    },
+    "a-lang": {
+      "display": "A言語 (interpreter af48a2a)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/007-6e70fae_interpreter.toml"
+    },
+    "bash": {
+      "display": "Bash (bash 5.3)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/008-5-2-21_bash.toml"
+    },
+    "cpp23-gcc": {
+      "display": "C++23 (GCC 15.2.0)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/017-23_gcc_14-2-0.toml",
+      "notes": "The upstream filename is historical; its current display and install body target GCC 15.2.0."
+    },
+    "clay": {
+      "display": "cLay (cLay 20250308-1, GCC 15.2.0)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/020-20250224-1-clay.toml"
+    },
+    "dc": {
+      "display": "dc 1.5.2 (GNU bc 1.08.2)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/034-1-5-1_gnu.toml"
+    },
+    "octave": {
+      "display": "Octave (GNU Octave 10.2.0)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/074-9-4-0_gnu.toml"
+    },
+    "perl": {
+      "display": "Perl (perl 5.38.2)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/076-5-38-2_perl.toml"
+    },
+    "pypy311": {
+      "display": "Python (PyPy 3.11-v7.3.20)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/083-3-10_pypy-7-3-17.toml",
+      "notes": "The upstream filename is historical; its current display targets PyPy 3.11-v7.3.20."
+    },
+    "r": {
+      "display": "R (GNU R 4.5.0)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/084-4-4-2_gnu-r.toml"
+    },
+    "ruby": {
+      "display": "Ruby 3.4 (ruby 3.4.5)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/087-3-3_ruby-3-3-6.toml",
+      "notes": "Selected as the standard Ruby entry. TruffleRuby is not included."
+    },
+    "uiua": {
+      "display": "Uiua (uiua 0.16.2)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/103-0-13-0_uiua.toml"
+    },
+    "codon": {
+      "display": "Python (Codon 0.19.3)",
+      "spec_url": "https://img.atcoder.jp/file/language-update/2025-10/115-0-17_codon.toml"
+    }
+  }
+}
