@@ -64,5 +64,10 @@ jobs:
             inputs.language }}:2025-10
           build-args: |
             SPEC_URL=${{ steps.spec.outputs.spec_url }}
-          cache-from: type=gha,scope=${{ inputs.language }}
-          cache-to: type=gha,mode=max,scope=${{ inputs.language }}
+          cache-from: |
+            type=gha,scope=${{ inputs.language }}
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{ inputs.language }}:buildcache
+          cache-to: >-
+            type=registry,
+            ref=ghcr.io/${{ github.repository_owner }}/atcoder-codegolf-${{ inputs.language }}:buildcache,
+            mode=max
