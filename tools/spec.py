@@ -61,7 +61,7 @@ def install(location: str, root: Path) -> None:
             "https://ftp.gnu.org/gnu/apl/apl-1.9.tar.gz",
         )
         script = (
-            "set -Eex -o pipefail\n"
+            "set -Eex\n"
             "trap 's=$?; "
             'echo "::error::APL install failed at line '
             "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
@@ -82,7 +82,7 @@ def install(location: str, root: Path) -> None:
         )
     if "Codon" in spec.get("display", ""):
         script = (
-            "set -Eex -o pipefail\n"
+            "set -Eex\n"
             "trap 's=$?; "
             'echo "::error::Codon install failed at line '
             "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
@@ -91,7 +91,7 @@ def install(location: str, root: Path) -> None:
         )
     if spec.get("language") == "cLay":
         script = (
-            "set -Eex -o pipefail\n"
+            "set -Eex\n"
             "trap 's=$?; "
             'echo "::error::cLay install failed at line '
             "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
