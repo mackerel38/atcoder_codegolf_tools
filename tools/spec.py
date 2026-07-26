@@ -72,7 +72,15 @@ def install(location: str, root: Path) -> None:
             marker,
             marker + "\ngem install -N rice:4.6.1",
         )
-    
+    if "Codon" in spec.get("display", ""):
+        script = (
+            "set -Eex -o pipefail\n"
+            "trap 's=$?; "
+            'echo "::error::Codon install failed at line '
+            "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
+            "exit $s' ERR\n"
+            + script
+        )
     if script:
         install_script = root / "install.sh"
         install_script.write_text(
