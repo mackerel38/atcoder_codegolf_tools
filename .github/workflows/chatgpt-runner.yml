@@ -1,0 +1,64 @@
+name: ChatGPT code-golf runner
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  packages: read
+  issues: write
+
+concurrency:
+  group: chatgpt-codegolf-runner
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.issue.title == 'ChatGPT code-golf execution queue' &&
+      github.event.issue.user.login == github.repository_owner &&
+      github.event.comment.user.login == github.repository_owner &&
+      startsWith(github.event.comment.body, '/run')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Execute request
+        id: execute
+        env:
+          RESULT_FILE: ${{ runner.temp }}/chatgpt-result.md
+          REPORT_FILE: ${{ runner.temp }}/chatgpt-report.json
+        run: |
+          python3 tools/chatgpt_runner.py \
+            --event "$GITHUB_EVENT_PATH" \
+            --output "$RESULT_FILE" \
+            --report-json "$REPORT_FILE"
+
+      - name: Reply with result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RESULT_FILE: ${{ runner.temp }}/chatgpt-result.md
+        run: |
+          if [[ ! -s "$RESULT_FILE" ]]; then
+            printf '%s\n' \
+              '## Code-golf runner error' \
+              '' \
+              'The runner stopped before producing a report. Inspect the workflow log.' \
+              > "$RESULT_FILE"
+          fi
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file "$RESULT_FILE"
