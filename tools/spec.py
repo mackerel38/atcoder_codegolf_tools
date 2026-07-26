@@ -99,17 +99,29 @@ def install(location: str, root: Path) -> None:
         )
     
         # The old scipopt.org direct download URL has been removed.
-        # Resolve the exact Ubuntu 24 installer from the official v9.2.3 release.
         script = script.replace(
             "wget -q -O scip.sh "
             "https://scipopt.org/download/release/"
             "SCIPOptSuite-9.2.3-Linux-ubuntu24.sh",
             """scip_url="$(curl -fsSL \
-    https://api.github.com/repos/scipopt/scip/releases/tags/v923 |
-    sed -n 's/.*"browser_download_url": "\\(.*SCIPOptSuite-9.2.3-Linux-ubuntu24\\.sh\\)".*/\\1/p' |
-    head -1)"
-    test -n "$scip_url"
-    wget -q -O scip.sh "$scip_url" """,
+https://api.github.com/repos/scipopt/scip/releases/tags/v923 |
+sed -n 's/.*"browser_download_url": "\\(.*SCIPOptSuite-9.2.3-Linux-ubuntu24\\.sh\\)".*/\\1/p' |
+head -1)"
+test -n "$scip_url"
+wget -q -O scip.sh "$scip_url" """,
+        )
+    
+        # Keep Abseil and OR-Tools on the matching AtCoder dependency set.
+        script = script.replace(
+            'gh_download_latest "google" "or-tools"\n'
+            'pushd google-or-tools/*',
+            '''AC_ORTOOLS_VERSION="9.14"
+wget -q -O or-tools.tar.gz \
+"https://github.com/google/or-tools/releases/download/v${AC_ORTOOLS_VERSION}/or-tools-${AC_ORTOOLS_VERSION}.tar.gz"
+mkdir google-or-tools
+tar -C google-or-tools -xf or-tools.tar.gz
+echo "google/or-tools $AC_ORTOOLS_VERSION" >> "$HOME/library_version"
+pushd google-or-tools/*''',
         )
     
         script = (
