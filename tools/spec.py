@@ -92,45 +92,63 @@ def install(location: str, root: Path) -> None:
             + script
         )
     if spec.get("language") == "cLay":
-        # GitHub REST API may redirect renamed or transferred repositories.
+        # Follow redirects from repositories that were renamed or transferred.
         script = script.replace(
             "curl -s https://api.github.com/repos/",
             "curl -sL https://api.github.com/repos/",
         )
-    
-        # The old scipopt.org direct download URL has been removed.
-        script = script.replace(
+
+        # Replace the removed SCIP download URL with the official GitHub asset.
+        old_scip = (
             "wget -q -O scip.sh "
             "https://scipopt.org/download/release/"
-            "SCIPOptSuite-9.2.3-Linux-ubuntu24.sh",
-            """scip_url="$(curl -fsSL \
-https://api.github.com/repos/scipopt/scip/releases/tags/v923 |
-sed -n 's/.*"browser_download_url": "\\(.*SCIPOptSuite-9.2.3-Linux-ubuntu24\\.sh\\)".*/\\1/p' |
-head -1)"
-test -n "$scip_url"
-wget -q -O scip.sh "$scip_url" """,
+            "SCIPOptSuite-9.2.3-Linux-ubuntu24.sh"
         )
-    
-        # Keep Abseil and OR-Tools on the matching AtCoder dependency set.
-        script = script.replace(
+        new_scip = (
+            "wget -q -O scip.sh "
+            "https://github.com/scipopt/scip/releases/download/v923/"
+            "SCIPOptSuite-9.2.3-Linux-ubuntu24.sh"
+        )
+
+        if old_scip not in script:
+            raise SystemExit("cLay SCIP patch target not found")
+
+        script = script.replace(old_scip, new_scip)
+
+        # Pin OR-Tools to the version matching the AtCoder dependency set.
+        old_ortools = (
             'gh_download_latest "google" "or-tools"\n'
-            'pushd google-or-tools/*',
-            '''AC_ORTOOLS_VERSION="9.14"
-wget -q -O or-tools.tar.gz \
-"https://github.com/google/or-tools/releases/download/v${AC_ORTOOLS_VERSION}/or-tools-${AC_ORTOOLS_VERSION}.tar.gz"
-mkdir google-or-tools
-tar -C google-or-tools -xf or-tools.tar.gz
-echo "google/or-tools $AC_ORTOOLS_VERSION" >> "$HOME/library_version"
-pushd google-or-tools/*''',
+            "pushd google-or-tools/*"
         )
-    
+
+        new_ortools = "\n".join(
+            (
+                'AC_ORTOOLS_VERSION="9.14"',
+                'wget -q -O or-tools.tar.gz '
+                '"https://github.com/google/or-tools/releases/download/'
+                'v${AC_ORTOOLS_VERSION}/'
+                'or-tools-${AC_ORTOOLS_VERSION}.tar.gz"',
+                "mkdir google-or-tools",
+                "tar -C google-or-tools -xf or-tools.tar.gz",
+                'echo "google/or-tools $AC_ORTOOLS_VERSION" '
+                '>> "$HOME/library_version"',
+                "pushd google-or-tools/*",
+            )
+        )
+
+        if old_ortools not in script:
+            raise SystemExit("cLay OR-Tools patch target not found")
+
+        script = script.replace(old_ortools, new_ortools)
+
+        # Show the exact command when installation fails.
         script = (
             "set -Eex\n"
             "trap 's=$?; "
             'echo "::error::cLay install failed at line '
             "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
             'echo "::group::Disk usage" >&2; '
-            'df -h >&2; '
+            "df -h >&2; "
             'echo "::endgroup::" >&2; '
             "exit $s' ERR\n"
             + script
