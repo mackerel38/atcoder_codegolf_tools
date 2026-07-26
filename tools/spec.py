@@ -50,6 +50,7 @@ def install(location: str, root: Path) -> None:
     script = spec.get("install", "")
     if not isinstance(script, str):
         raise SystemExit("install must be a string")
+    script = script.replace("perl=5.38.2-3.2ubuntu0.2", "perl")
     if script:
         install_script = root / "install.sh"
         install_script.write_text(
