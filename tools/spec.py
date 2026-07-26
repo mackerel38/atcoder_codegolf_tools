@@ -81,6 +81,18 @@ def install(location: str, root: Path) -> None:
             "exit $s' ERR\n"
             + script
         )
+    if spec.get("language") == "cLay":
+        script = (
+            "set -Eex -o pipefail\n"
+            "trap 's=$?; "
+            'echo "::error::cLay install failed at line '
+            "$LINENO: $BASH_COMMAND (exit $s)\" >&2; "
+            'echo "::group::Disk usage" >&2; '
+            'df -h >&2; '
+            'echo "::endgroup::" >&2; '
+            "exit $s' ERR\n"
+            + script
+        )
     if script:
         install_script = root / "install.sh"
         install_script.write_text(
