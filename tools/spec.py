@@ -97,6 +97,21 @@ def install(location: str, root: Path) -> None:
             "curl -s https://api.github.com/repos/",
             "curl -sL https://api.github.com/repos/",
         )
+    
+        # The old scipopt.org direct download URL has been removed.
+        # Resolve the exact Ubuntu 24 installer from the official v9.2.3 release.
+        script = script.replace(
+            "wget -q -O scip.sh "
+            "https://scipopt.org/download/release/"
+            "SCIPOptSuite-9.2.3-Linux-ubuntu24.sh",
+            """scip_url="$(curl -fsSL \
+    https://api.github.com/repos/scipopt/scip/releases/tags/v923 |
+    sed -n 's/.*"browser_download_url": "\\(.*SCIPOptSuite-9.2.3-Linux-ubuntu24\\.sh\\)".*/\\1/p' |
+    head -1)"
+    test -n "$scip_url"
+    wget -q -O scip.sh "$scip_url" """,
+        )
+    
         script = (
             "set -Eex\n"
             "trap 's=$?; "
