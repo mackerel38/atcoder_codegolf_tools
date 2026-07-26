@@ -95,7 +95,8 @@ def install(location: str, root: Path) -> None:
         # Follow redirects from repositories that were renamed or transferred.
         script = script.replace(
             "curl -s https://api.github.com/repos/",
-            "curl -sL https://api.github.com/repos/",
+            "curl -fsSL --netrc-file /tmp/github.netrc "
+            "https://api.github.com/repos/",
         )
 
         # Replace the removed SCIP download URL with the official GitHub asset.
