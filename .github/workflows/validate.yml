@@ -1,0 +1,31 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local tooling
+        run: python3 tests/test_tools.py
+      - name: Validate upstream AtCoder TOML files
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          manifest=json.load(open('manifest.json'))
+          for slug,item in manifest['languages'].items():
+              print(f"::group::{slug}")
+              subprocess.run(
+                  ['python3','tools/spec.py','validate',item['spec_url']],
+                  check=True
+              )
+              print('::endgroup::')
+          PY
