@@ -90,6 +90,11 @@ def install(location: str, root: Path) -> None:
             + script
         )
     if spec.get("language") == "cLay":
+        # GitHub REST API may redirect renamed or transferred repositories.
+        script = script.replace(
+            "curl -s https://api.github.com/repos/",
+            "curl -sL https://api.github.com/repos/",
+        )
         script = (
             "set -Eex\n"
             "trap 's=$?; "
