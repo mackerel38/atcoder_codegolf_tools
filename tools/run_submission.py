@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(os.environ.get("TOOLCHAIN_ROOT", "/opt/atcoder-toolchain"))
 SUBMISSION = Path(os.environ.get("SUBMISSION", "/submission"))
@@ -33,17 +34,43 @@ def runtime_environment(spec: dict) -> dict[str, str]:
 def source_path(filename: str) -> Path:
     if SUBMISSION.is_file():
         return SUBMISSION
+
     candidate = SUBMISSION / filename
     if candidate.is_file():
         return candidate
-    files = [path for path in SUBMISSION.iterdir() if path.is_file()] if SUBMISSION.is_dir() else []
+
+    files = (
+        [path for path in SUBMISSION.iterdir() if path.is_file()]
+        if SUBMISSION.is_dir()
+        else []
+    )
     if len(files) == 1:
         return files[0]
+
     raise SystemExit(f"submission source not found: expected {candidate}")
+
+
+def remove_old_object(path: Path) -> None:
+    """Remove an object left by a previous compile attempt."""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def report_compile_failure(
+    completed: subprocess.CompletedProcess[bytes],
+) -> None:
+    """Expose compiler output only when compilation actually fails."""
+    if completed.stdout:
+        sys.stderr.buffer.write(completed.stdout)
+    if completed.stderr:
+        sys.stderr.buffer.write(completed.stderr)
 
 
 def main() -> None:
     spec = json.loads((ROOT / "spec.json").read_text(encoding="utf-8"))
+
     filename = spec["filename"]
     src = source_path(filename)
     dst = ROOT / filename
@@ -51,12 +78,45 @@ def main() -> None:
     shutil.copyfile(src, dst)
 
     env = runtime_environment(spec)
+
     compile_script = spec.get("compile")
     if compile_script:
-        subprocess.run(["bash", "-c", compile_script], cwd=ROOT, env=env, check=True)
         obj = spec.get("object")
-        if obj and not (ROOT / obj).exists():
-            raise SystemExit(f"compile command succeeded but object is missing: {obj}")
+        object_path = ROOT / obj if obj else None
+
+        # Do not accept an object left by an earlier candidate or test.
+        if object_path:
+            remove_old_object(object_path)
+
+        # Compilation output must not be mixed into the submission output.
+        completed = subprocess.run(
+            ["bash", "-c", compile_script],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        if object_path:
+            # AtCoder language specifications may intentionally return a
+            # nonzero status after creating the object marker. Ruby does this:
+            #
+            #   ruby -c Main.rb &&
+            #   touch syntax_ok &&
+            #   ruby --jit Main.rb ONLINE_JUDGE 2>/dev/null
+            #
+            # Therefore the declared object is the source of truth.
+            if not object_path.exists():
+                report_compile_failure(completed)
+                raise SystemExit(
+                    f"compile command did not create expected object: {obj} "
+                    f"(exit {completed.returncode})"
+                )
+        elif completed.returncode:
+            # Specifications without an object marker use the exit status.
+            report_compile_failure(completed)
+            raise SystemExit(completed.returncode)
 
     command = [placeholders(str(value)) for value in spec["execution"]]
     completed = subprocess.run(command, cwd=ROOT, env=env)
