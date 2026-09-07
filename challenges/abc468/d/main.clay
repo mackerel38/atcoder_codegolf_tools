@@ -1,0 +1,1 @@
+ll z=0;string@s;rep(k,2)rep(i,s.size())for(ll l=i-k,r=i,c=0;0<=l&&r<s.size()&&(c+=s[l--]!=s[r++])<2;z++);wt(z);

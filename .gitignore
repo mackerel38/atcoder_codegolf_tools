@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+.runtime/
+challenges/abc468/*/cases/random*

@@ -10,7 +10,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: chatgpt-codegolf-runner
+  group: chatgpt-codegolf-runner-${{ github.event.comment.id }}
   cancel-in-progress: false
 
 jobs:

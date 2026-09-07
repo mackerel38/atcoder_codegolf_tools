@@ -6,11 +6,17 @@ usage() {
   cat <<'EOF'
 Usage:
   ./bootstrap.sh list
+  ./bootstrap.sh status
+  ./bootstrap.sh bytes SOURCE...
+  ./bootstrap.sh test LANGUAGE SOURCE CASES_DIR [MODE]
   ./bootstrap.sh build LANGUAGE
   ./bootstrap.sh pull LANGUAGE
   ./bootstrap.sh run LANGUAGE SOURCE [INPUT]
+  ./bootstrap.sh remote-payload LANGUAGE SOURCE CASES_DIR [MODE]
+  ./bootstrap.sh remote LANGUAGE SOURCE CASES_DIR [MODE]
 
-The run command requires Docker. It never installs Docker or another runtime.
+The run command requires Docker. The remote commands require Python 3; posting
+also requires an authenticated GitHub CLI. These commands never install runtimes.
 EOF
 }
 
@@ -29,6 +35,20 @@ import json
 m=json.load(open('manifest.json'))
 for k,v in m['languages'].items(): print(f"{k:12} {v['display']}")
 PY
+    ;;
+  status)
+    python3 tools/golf.py status
+    ;;
+  bytes)
+    shift
+    python3 tools/golf.py bytes "$@"
+    ;;
+  test)
+    lang=${2:?language is required}
+    source=${3:?source path is required}
+    cases=${4:?cases directory is required}
+    mode=${5:-tokens}
+    python3 tools/golf.py test "$lang" "$source" "$cases" --mode "$mode"
     ;;
   build)
     lang=${2:?language is required}
@@ -54,6 +74,21 @@ PY
       args+=("$(image "$lang")")
       docker run "${args[@]}"
     fi
+    ;;
+  remote-payload)
+    lang=${2:?language is required}
+    source=${3:?source path is required}
+    cases=${4:?cases directory is required}
+    mode=${5:-tokens}
+    python3 tools/remote_request.py "$lang" "$source" "$cases" --mode "$mode"
+    ;;
+  remote)
+    lang=${2:?language is required}
+    source=${3:?source path is required}
+    cases=${4:?cases directory is required}
+    mode=${5:-tokens}
+    python3 tools/remote_request.py "$lang" "$source" "$cases" \
+      --mode "$mode" --post
     ;;
   *) usage; exit 2;;
 esac
